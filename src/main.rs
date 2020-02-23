@@ -46,6 +46,7 @@ fn main() {
     if header.magic != BF_MAGIC {
         panic!("Unsupported format: {:X?}", header.magic);
     }
+    assert!(&header.type_ == b"TCSO");
     let root_name_len = cursor.read_u16::<BE>().unwrap();
     let mut root_name = vec![0; root_name_len as usize];
     cursor.read_exact(&mut root_name).unwrap();
