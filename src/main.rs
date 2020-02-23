@@ -34,6 +34,42 @@ fn utf8_dump<T: AsRef<[u8]>>(buf: &T, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "{:?}", String::from_utf8_lossy(buf.as_ref()))
 }
 
+fn read_amf0(mut cursor: std::io::Cursor<Vec<u8>>, len: u64) {
+    loop {
+        if cursor.position() - 6 == len {
+            break;
+        }
+        let key_len = cursor.read_u16::<BE>().unwrap();
+        let mut key = vec![0; key_len as usize];
+        cursor.read_exact(&mut key).unwrap();
+        println!("Found key: {:?}", String::from_utf8_lossy(&key));
+        let type_ = cursor.read_u8().unwrap();
+        println!("Type: {}", type_);
+        match type_ {
+            0 => {
+                let num = cursor.read_f64::<BE>().unwrap();
+                println!("Numeric value: {}", num);
+            }
+            1 => {
+                let bool_marker = cursor.read_u8().unwrap();
+                println!("Bool marker: {}", bool_marker);
+            }
+            2 => {
+                let len = cursor.read_u16::<BE>().unwrap();
+                let mut buf = vec![0; len as usize];
+                cursor.read_exact(&mut buf).unwrap();
+                println!("UTF-8 String: {}", String::from_utf8_lossy(&buf));
+            }
+            _ => panic!("Unexpected type: {:02X}", type_),
+        }
+        let _padding = cursor.read_u8().unwrap();
+    }
+}
+
+fn read_amf3(cursor: std::io::Cursor<Vec<u8>>, len: u64) {
+    eprintln!("Warning: AMF3 support in-development. Will break");
+}
+
 fn main() {
     let path = env::args_os().nth(1).expect("Need file path as argument");
     let data = std::fs::read(path).unwrap();
@@ -71,36 +107,8 @@ fn main() {
         Some(ver) => ver,
         None => panic!("Unknown AMF version"),
     };
-    if let AmfVer::Amf3 = amf_ver {
-        eprintln!("Warning: AMF3 support in-development. Will break");
-    }
-    loop {
-        if cursor.position() - 6 == header.len as u64 {
-            break;
-        }
-        let key_len = cursor.read_u16::<BE>().unwrap();
-        let mut key = vec![0; key_len as usize];
-        cursor.read_exact(&mut key).unwrap();
-        println!("Found key: {:?}", String::from_utf8_lossy(&key));
-        let type_ = cursor.read_u8().unwrap();
-        println!("Type: {}", type_);
-        match type_ {
-            0 => {
-                let num = cursor.read_f64::<BE>().unwrap();
-                println!("Numeric value: {}", num);
-            }
-            1 => {
-                let bool_marker = cursor.read_u8().unwrap();
-                println!("Bool marker: {}", bool_marker);
-            }
-            2 => {
-                let len = cursor.read_u16::<BE>().unwrap();
-                let mut buf = vec![0; len as usize];
-                cursor.read_exact(&mut buf).unwrap();
-                println!("UTF-8 String: {}", String::from_utf8_lossy(&buf));
-            }
-            _ => panic!("Unexpected type: {:02X}", type_),
-        }
-        let _padding = cursor.read_u8().unwrap();
+    match amf_ver {
+        AmfVer::Amf0 => read_amf0(cursor, header.len as u64),
+        AmfVer::Amf3 => read_amf3(cursor, header.len as u64),
     }
 }
