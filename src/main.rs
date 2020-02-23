@@ -20,14 +20,13 @@ struct SolHeader {
 enum AmfVer {
     Amf0,
     Amf3,
-    Unknown,
 }
 
-fn amf_ver_spec(blob: [u8; 4]) -> AmfVer {
+fn amf_ver_spec(blob: [u8; 4]) -> Option<AmfVer> {
     match blob[3] {
-        0 => AmfVer::Amf0,
-        3 => AmfVer::Amf3,
-        _ => AmfVer::Unknown,
+        0 => Some(AmfVer::Amf0),
+        3 => Some(AmfVer::Amf3),
+        _ => None,
     }
 }
 
@@ -68,10 +67,12 @@ fn main() {
     println!("Root name: {}", String::from_utf8_lossy(&root_name));
     let mut blob = [0; 4];
     cursor.read_exact(&mut blob).unwrap();
-    match amf_ver_spec(blob) {
-        AmfVer::Amf0 => {}
-        AmfVer::Amf3 => panic!("AMF3 is not currently supported"),
-        AmfVer::Unknown => panic!("Unkown AMF version"),
+    let amf_ver = match amf_ver_spec(blob) {
+        Some(ver) => ver,
+        None => panic!("Unknown AMF version"),
+    };
+    if let AmfVer::Amf3 = amf_ver {
+        eprintln!("Warning: AMF3 support in-development. Will break");
     }
     loop {
         if cursor.position() - 6 == header.len as u64 {
