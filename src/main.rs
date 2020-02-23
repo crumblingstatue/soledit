@@ -17,6 +17,20 @@ struct SolHeader {
     tail: [u8; 6],
 }
 
+enum AmfVer {
+    Amf0,
+    Amf3,
+    Unknown,
+}
+
+fn amf_ver_spec(blob: [u8; 4]) -> AmfVer {
+    match blob[3] {
+        0 => AmfVer::Amf0,
+        3 => AmfVer::Amf3,
+        _ => AmfVer::Unknown,
+    }
+}
+
 fn utf8_dump<T: AsRef<[u8]>>(buf: &T, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "{:?}", String::from_utf8_lossy(buf.as_ref()))
 }
@@ -52,8 +66,13 @@ fn main() {
     let mut root_name = vec![0; root_name_len as usize];
     cursor.read_exact(&mut root_name).unwrap();
     println!("Root name: {}", String::from_utf8_lossy(&root_name));
-    let mut padding = [0; 4];
-    cursor.read_exact(&mut padding).unwrap();
+    let mut blob = [0; 4];
+    cursor.read_exact(&mut blob).unwrap();
+    match amf_ver_spec(blob) {
+        AmfVer::Amf0 => {}
+        AmfVer::Amf3 => panic!("AMF3 is not currently supported"),
+        AmfVer::Unknown => panic!("Unkown AMF version"),
+    }
     loop {
         if cursor.position() - 6 == header.len as u64 {
             break;
