@@ -67,7 +67,18 @@ fn read_amf0(mut cursor: std::io::Cursor<Vec<u8>>, len: u64) {
 }
 
 fn read_amf3(cursor: std::io::Cursor<Vec<u8>>, len: u64) {
-    eprintln!("Warning: AMF3 support in-development. Will break");
+    let mut decoder = amf::amf3::Decoder::new(cursor);
+    loop {
+        if decoder.inner().position() - 6 == len {
+            break;
+        }
+        let key = decoder.decode_utf8().unwrap();
+        eprintln!("Found key: {:?}", key);
+        //let value = decoder.decode_keep_state().unwrap();
+        let value = decoder.decode().unwrap();
+        eprintln!("Decoded value: {:#?}", value);
+        let _padding = decoder.inner().read_u8().unwrap();
+    }
 }
 
 fn main() {

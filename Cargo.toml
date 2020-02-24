@@ -9,3 +9,7 @@ edition = "2018"
 [dependencies]
 byteorder = "1.3.4"
 custom_debug = "0.4.0"
+
+[dependencies.amf]
+#path = "amf"
+version = "0.2.1"
