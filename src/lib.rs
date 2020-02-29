@@ -1,16 +1,14 @@
 use byteorder::{ReadBytesExt, BE};
-use custom_debug::CustomDebug;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt;
 use std::io::Read;
 use std::path::Path;
 
 #[derive(Debug)]
 pub struct Sol<ValueType> {
-    header: SolHeader,
-    root_name: String,
-    amf: HashMap<String, ValueType>,
+    pub len: u32,
+    pub root_name: String,
+    pub amf: HashMap<String, ValueType>,
 }
 
 #[derive(Debug)]
@@ -29,29 +27,18 @@ pub enum SolReadResult {
 pub fn read_from_file(path: &Path) -> Result<SolReadResult, Box<dyn Error>> {
     let data = std::fs::read(path).unwrap();
     let mut cursor = std::io::Cursor::new(data);
-    let header = SolHeader {
-        magic: {
-            let mut buf = [0; 2];
-            cursor.read_exact(&mut buf).unwrap();
-            buf
-        },
-        len: cursor.read_u32::<BE>().unwrap(),
-        type_: {
-            let mut type_ = [0; 4];
-            cursor.read_exact(&mut type_).unwrap();
-            type_
-        },
-        tail: {
-            let mut tail = [0; 6];
-            cursor.read_exact(&mut tail).unwrap();
-            tail
-        },
-    };
-    if header.magic != BF_MAGIC {
-        panic!("Unsupported format: {:X?}", header.magic);
+    let mut magic = [0; 2];
+    cursor.read_exact(&mut magic).unwrap();
+    if magic != BF_MAGIC {
+        panic!("Unsupported format: {:X?}", magic);
     }
-    assert!(header.type_ == *b"TCSO");
-    assert!(header.tail == [0x00, 0x04, 0x00, 0x00, 0x00, 0x00]);
+    let len = cursor.read_u32::<BE>().unwrap();
+    let mut type_ = [0; 4];
+    cursor.read_exact(&mut type_).unwrap();
+    assert!(type_ == TCSO_MAGIC);
+    let mut tail = [0; 6];
+    cursor.read_exact(&mut tail).unwrap();
+    assert!(tail == TAIL_MAGIC);
     let root_name_len = cursor.read_u16::<BE>().unwrap();
     let mut root_name = vec![0; root_name_len as usize];
     cursor.read_exact(&mut root_name).unwrap();
@@ -62,34 +49,23 @@ pub fn read_from_file(path: &Path) -> Result<SolReadResult, Box<dyn Error>> {
         Some(ver) => ver,
         None => panic!("Unknown AMF version"),
     };
-    let len = header.len as u64;
     match amf_ver {
         AmfVer::Amf0 => Ok(SolReadResult::Amf0(Sol {
-            header,
+            len,
             root_name,
-            amf: read_amf0(cursor, len)?,
+            amf: read_amf0(cursor, len as u64)?,
         })),
         AmfVer::Amf3 => Ok(SolReadResult::Amf3(Sol {
-            header,
+            len,
             root_name,
-            amf: read_amf3(cursor, len)?,
+            amf: read_amf3(cursor, len as u64)?,
         })),
     }
 }
 
 const BF_MAGIC: [u8; 2] = [0x00, 0xBF];
-
-#[derive(CustomDebug)]
-struct SolHeader {
-    #[debug(format = "{:02X?}")]
-    magic: [u8; 2],
-    len: u32,
-    #[debug(with = "utf8_dump")]
-    type_: [u8; 4],
-    #[debug(format = "{:02X?}")]
-    tail: [u8; 6],
-}
-
+const TCSO_MAGIC: [u8; 4] = *b"TCSO";
+const TAIL_MAGIC: [u8; 6] = [0x00, 0x04, 0x00, 0x00, 0x00, 0x00];
 enum AmfVer {
     Amf0,
     Amf3,
@@ -101,10 +77,6 @@ fn amf_ver_spec(blob: [u8; 4]) -> Option<AmfVer> {
         3 => Some(AmfVer::Amf3),
         _ => None,
     }
-}
-
-fn utf8_dump<T: AsRef<[u8]>>(buf: &T, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{:?}", String::from_utf8_lossy(buf.as_ref()))
 }
 
 fn read_amf0(
