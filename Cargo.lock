@@ -2,9 +2,9 @@
 # It is not intended for manual editing.
 [[package]]
 name = "amf"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f011ed1a69af981238ca051405b0b047517f862e3ebb2e7f8be0cb218d07d51"
+checksum = "6a4ea0535c76bc9be42529c4016f6904fc9e6ee07df70b2f64df1b17ef31731a"
 dependencies = [
  "byteorder",
 ]
