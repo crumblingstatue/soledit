@@ -1,5 +1,4 @@
 use byteorder::{ReadBytesExt, BE};
-use std::collections::HashMap;
 use std::error::Error;
 use std::io::Read;
 use std::path::Path;
@@ -8,7 +7,7 @@ use std::path::Path;
 pub struct Sol<ValueType> {
     pub len: u32,
     pub root_name: String,
-    pub amf: HashMap<String, ValueType>,
+    pub amf: Vec<(String, ValueType)>,
 }
 
 #[derive(Debug)]
@@ -82,11 +81,11 @@ fn amf_ver_spec(blob: [u8; 4]) -> Option<AmfVer> {
 fn read_amf0(
     mut cursor: std::io::Cursor<Vec<u8>>,
     len: u64,
-) -> Result<HashMap<String, Amf0Value>, Box<dyn Error>> {
-    let mut map = HashMap::new();
+) -> Result<Vec<(String, Amf0Value)>, Box<dyn Error>> {
+    let mut kvpairs = Vec::new();
     loop {
         if cursor.position() - 6 == len {
-            return Ok(map);
+            return Ok(kvpairs);
         }
         let key_len = cursor.read_u16::<BE>().unwrap();
         let mut key = vec![0; key_len as usize];
@@ -110,7 +109,7 @@ fn read_amf0(
             }
             _ => panic!("Unexpected type: {:02X}", type_),
         };
-        map.insert(key, value);
+        kvpairs.push((key, value));
         let _padding = cursor.read_u8().unwrap();
     }
 }
@@ -118,16 +117,16 @@ fn read_amf0(
 fn read_amf3(
     cursor: std::io::Cursor<Vec<u8>>,
     len: u64,
-) -> Result<HashMap<String, amf::Amf3Value>, Box<dyn Error>> {
-    let mut map = HashMap::new();
+) -> Result<Vec<(String, amf::Amf3Value)>, Box<dyn Error>> {
+    let mut kvpairs = Vec::new();
     let mut decoder = amf::amf3::Decoder::new(cursor);
     loop {
         if decoder.inner().position() - 6 == len {
-            return Ok(map);
+            return Ok(kvpairs);
         }
         let key = decoder.decode_utf8().unwrap();
         let value = decoder.decode().unwrap();
         let _padding = decoder.inner().read_u8().unwrap();
-        map.insert(key, value);
+        kvpairs.push((key, value));
     }
 }
