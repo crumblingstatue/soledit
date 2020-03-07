@@ -25,6 +25,15 @@ pub enum SolReadResult {
     Amf3(Sol<amf::Amf3Value>),
 }
 
+impl SolReadResult {
+    pub fn root_name(&self) -> &str {
+        match self {
+            Self::Amf0(sol) => &sol.root_name,
+            Self::Amf3(sol) => &sol.root_name,
+        }
+    }
+}
+
 pub fn read_from_file(path: &Path) -> Result<SolReadResult, Box<dyn Error>> {
     let data = std::fs::read(path).unwrap();
     let mut cursor = std::io::Cursor::new(data);
