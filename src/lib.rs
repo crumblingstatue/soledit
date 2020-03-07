@@ -17,6 +17,8 @@ pub enum Amf0Value {
     String(String),
 }
 
+pub type Amf3Value = amf::Amf3Value;
+
 #[derive(Debug)]
 pub enum SolReadResult {
     Amf0(Sol<Amf0Value>),
