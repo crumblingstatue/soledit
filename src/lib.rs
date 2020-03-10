@@ -7,7 +7,7 @@ use std::path::Path;
 pub struct Sol<ValueType> {
     pub len: u32,
     pub root_name: String,
-    pub amf: Vec<(String, ValueType)>,
+    pub amf: Vec<Pair<ValueType>>,
 }
 
 #[derive(Debug)]
@@ -18,6 +18,7 @@ pub enum Amf0Value {
 }
 
 pub type Amf3Value = amf::Amf3Value;
+pub type Pair<T> = amf::Pair<String, T>;
 
 #[derive(Debug)]
 pub enum SolReadResult {
@@ -92,7 +93,7 @@ fn amf_ver_spec(blob: [u8; 4]) -> Option<AmfVer> {
 fn read_amf0(
     mut cursor: std::io::Cursor<Vec<u8>>,
     len: u64,
-) -> Result<Vec<(String, Amf0Value)>, Box<dyn Error>> {
+) -> Result<Vec<Pair<Amf0Value>>, Box<dyn Error>> {
     let mut kvpairs = Vec::new();
     loop {
         if cursor.position() - 6 == len {
@@ -120,7 +121,7 @@ fn read_amf0(
             }
             _ => panic!("Unexpected type: {:02X}", type_),
         };
-        kvpairs.push((key, value));
+        kvpairs.push(Pair { key, value });
         let _padding = cursor.read_u8().unwrap();
     }
 }
@@ -128,7 +129,7 @@ fn read_amf0(
 fn read_amf3(
     cursor: std::io::Cursor<Vec<u8>>,
     len: u64,
-) -> Result<Vec<(String, amf::Amf3Value)>, Box<dyn Error>> {
+) -> Result<Vec<Pair<amf::Amf3Value>>, Box<dyn Error>> {
     let mut kvpairs = Vec::new();
     let mut decoder = amf::amf3::Decoder::new(cursor);
     loop {
@@ -138,6 +139,6 @@ fn read_amf3(
         let key = decoder.decode_utf8().unwrap();
         let value = decoder.decode().unwrap();
         let _padding = decoder.inner().read_u8().unwrap();
-        kvpairs.push((key, value));
+        kvpairs.push(Pair { key, value });
     }
 }
