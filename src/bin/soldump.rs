@@ -74,6 +74,14 @@ fn dump_amf3_value(value: &soledit::Amf3Value, indent_level: &mut u32, inline: b
             *indent_level -= 1;
             printindent!(false, *indent_level, "]\n");
         }
-        _ => println!("{:?}", value),
+        Value::Null => printindent!(inline, *indent_level, "<null>\n"),
+        Value::Date { unix_time } => printindent!(
+            inline,
+            *indent_level,
+            "<date: {}s {}ns>\n",
+            unix_time.as_secs(),
+            unix_time.subsec_nanos()
+        ),
+        _ => todo!("Unimplemented item: {:?}", value),
     }
 }
