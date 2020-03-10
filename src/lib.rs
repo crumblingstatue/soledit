@@ -21,12 +21,12 @@ pub type Amf3Value = amf::Amf3Value;
 pub type Pair<T> = amf::Pair<String, T>;
 
 #[derive(Debug)]
-pub enum SolReadResult {
+pub enum SolVariant {
     Amf0(Sol<Amf0Value>),
     Amf3(Sol<amf::Amf3Value>),
 }
 
-impl SolReadResult {
+impl SolVariant {
     pub fn root_name(&self) -> &str {
         match self {
             Self::Amf0(sol) => &sol.root_name,
@@ -35,7 +35,7 @@ impl SolReadResult {
     }
 }
 
-pub fn read_from_file(path: &Path) -> Result<SolReadResult, Box<dyn Error>> {
+pub fn read_from_file(path: &Path) -> Result<SolVariant, Box<dyn Error>> {
     let data = std::fs::read(path).unwrap();
     let mut cursor = std::io::Cursor::new(data);
     let mut magic = [0; 2];
@@ -61,12 +61,12 @@ pub fn read_from_file(path: &Path) -> Result<SolReadResult, Box<dyn Error>> {
         None => panic!("Unknown AMF version"),
     };
     match amf_ver {
-        AmfVer::Amf0 => Ok(SolReadResult::Amf0(Sol {
+        AmfVer::Amf0 => Ok(SolVariant::Amf0(Sol {
             len,
             root_name,
             amf: read_amf0(cursor, len as u64)?,
         })),
-        AmfVer::Amf3 => Ok(SolReadResult::Amf3(Sol {
+        AmfVer::Amf3 => Ok(SolVariant::Amf3(Sol {
             len,
             root_name,
             amf: read_amf3(cursor, len as u64)?,

@@ -6,8 +6,8 @@ fn main() {
     let mut indent_level = 0;
     print!("{} ", sol.root_name());
     match sol {
-        soledit::SolReadResult::Amf0(sol) => dump_amf0(&sol.amf),
-        soledit::SolReadResult::Amf3(sol) => dump_amf3(&sol.amf, &mut indent_level, false),
+        soledit::SolVariant::Amf0(sol) => dump_amf0(&sol.amf),
+        soledit::SolVariant::Amf3(sol) => dump_amf3(&sol.amf, &mut indent_level, false),
     }
 }
 
