@@ -7,6 +7,9 @@ use std::path::Path;
 pub struct Sol<ValueType> {
     pub len: u32,
     pub root_name: String,
+    /// A list of key-value pairs. The values are all of the same AMF version.
+    /// There is no .sol file that has mixed AMF0 and AMF0.
+    /// Instead, the AMF version is stated upfront in a special field in the .sol file.
     pub amf: Vec<Pair<ValueType>>,
 }
 
