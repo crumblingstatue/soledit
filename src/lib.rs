@@ -60,24 +60,27 @@ impl<Ver: AmfVer> Sol<Ver>
 where
     Self: AmfWrite,
 {
-    pub fn write_to_file(&self, filename: &Path) -> Result<(), Box<dyn Error>> where {
-        let mut f = std::fs::File::create(filename)?;
-        f.write_all(&BF_MAGIC)?;
-        let len_pos = f.seek(SeekFrom::Current(0))?;
-        f.write_u32::<BE>(0)?;
-        f.write_all(&TCSO_MAGIC)?;
-        f.write_all(&TAIL_MAGIC)?;
-        f.write_u16::<BE>(self.root_name.len() as u16)?;
-        f.write_all(&self.root_name.as_bytes())?;
+    pub fn write<W: Write + Seek>(&self, mut w: W) -> Result<(), Box<dyn Error>> {
+        w.write_all(&BF_MAGIC)?;
+        let len_pos = w.seek(SeekFrom::Current(0))?;
+        w.write_u32::<BE>(0)?;
+        w.write_all(&TCSO_MAGIC)?;
+        w.write_all(&TAIL_MAGIC)?;
+        w.write_u16::<BE>(self.root_name.len() as u16)?;
+        w.write_all(&self.root_name.as_bytes())?;
         // Assume they are all zeroed, frick it.
         for _ in 0..3 {
-            f.write_u8(0)?;
+            w.write_u8(0)?;
         }
-        f.write_u8(Ver::ID)?;
-        let (mut f, len) = self.write_amf(f)?;
-        f.seek(SeekFrom::Start(len_pos))?;
-        f.write_u32::<BE>(len as u32)?;
+        w.write_u8(Ver::ID)?;
+        let (mut w, len) = self.write_amf(w)?;
+        w.seek(SeekFrom::Start(len_pos))?;
+        w.write_u32::<BE>(len as u32)?;
         Ok(())
+    }
+    pub fn write_to_file(&self, filename: &Path) -> Result<(), Box<dyn Error>> {
+        let f = std::fs::File::create(filename)?;
+        self.write(f)
     }
 }
 
