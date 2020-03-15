@@ -3,8 +3,7 @@
 [[package]]
 name = "amf"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a4ea0535c76bc9be42529c4016f6904fc9e6ee07df70b2f64df1b17ef31731a"
+source = "git+https://github.com/crumblingstatue/amf.git#d19e335fd24234531c3521975ab2324063c48d90"
 dependencies = [
  "byteorder",
 ]

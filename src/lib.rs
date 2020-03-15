@@ -1,16 +1,14 @@
-use byteorder::{ReadBytesExt, BE};
+use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use std::error::Error;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-#[derive(Debug)]
-pub struct Sol<ValueType> {
-    pub len: u32,
-    pub root_name: String,
-    /// A list of key-value pairs. The values are all of the same AMF version.
-    /// There is no .sol file that has mixed AMF0 and AMF0.
-    /// Instead, the AMF version is stated upfront in a special field in the .sol file.
-    pub amf: Vec<Pair<ValueType>>,
+/// AMF version used by the Sol.
+pub trait AmfVer {
+    /// The id used to identify this AMF version in the Sol.
+    const ID: u8;
+    /// Type used to represent values of this AMF version.
+    type Value;
 }
 
 #[derive(Debug)]
@@ -21,12 +19,106 @@ pub enum Amf0Value {
 }
 
 pub type Amf3Value = amf::Amf3Value;
+
+/// AMF version 0
+#[derive(Debug)]
+pub enum Amf0 {}
+
+/// AMF version 3
+pub enum Amf3 {}
+
+impl AmfVer for Amf0 {
+    const ID: u8 = 0;
+    type Value = Amf0Value;
+}
+
+impl AmfVer for Amf3 {
+    const ID: u8 = 3;
+    type Value = Amf3Value;
+}
+
+pub struct Sol<Ver: AmfVer> {
+    pub len: u32,
+    pub root_name: String,
+    /// A list of key-value pairs. The values are all of the same AMF version.
+    /// There is no .sol file that has mixed AMF0 and AMF0.
+    /// Instead, the AMF version is stated upfront in a special field in the .sol file.
+    pub amf: Vec<Pair<Ver::Value>>,
+}
+
+impl<Ver: AmfVer> Sol<Ver> {
+    pub fn new(root_name: String, amf: Vec<Pair<Ver::Value>>) -> Self {
+        Self {
+            len: 0,
+            root_name,
+            amf,
+        }
+    }
+}
+
+impl<Ver: AmfVer> Sol<Ver>
+where
+    Self: AmfWrite,
+{
+    pub fn write_to_file(&self, filename: &Path) -> Result<(), Box<dyn Error>> where {
+        let mut f = std::fs::File::create(filename)?;
+        f.write_all(&BF_MAGIC)?;
+        let len_pos = f.seek(SeekFrom::Current(0))?;
+        f.write_u32::<BE>(0)?;
+        f.write_all(&TCSO_MAGIC)?;
+        f.write_all(&TAIL_MAGIC)?;
+        f.write_u16::<BE>(self.root_name.len() as u16)?;
+        f.write_all(&self.root_name.as_bytes())?;
+        // Assume they are all zeroed, frick it.
+        for _ in 0..3 {
+            f.write_u8(0)?;
+        }
+        f.write_u8(Ver::ID)?;
+        let (mut f, len) = self.write_amf(f)?;
+        f.seek(SeekFrom::Start(len_pos))?;
+        f.write_u32::<BE>(len as u32)?;
+        Ok(())
+    }
+}
+
+pub trait AmfWrite {
+    fn write_amf<W: Write + Seek>(&self, w: W) -> Result<(W, u64), Box<dyn Error>>;
+}
+
+impl AmfWrite for Sol<Amf3> {
+    fn write_amf<W: Write + Seek>(&self, w: W) -> Result<(W, u64), Box<dyn Error>> {
+        let mut encoder = amf::amf3::Encoder::new(w);
+        for Pair { key, value } in &self.amf {
+            encoder.encode_utf8(key)?;
+            encoder.encode(value)?;
+            encoder.inner().write_u8(0).unwrap();
+        }
+        let end_pos = encoder.inner().seek(SeekFrom::Current(0))?;
+        Ok((encoder.into_inner(), end_pos - 6))
+    }
+}
+
+impl<Ver: AmfVer> std::fmt::Debug for Sol<Ver>
+where
+    Ver::Value: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "Sol, version {}, len: {}, root name: {}, amf: {:#?}",
+            Ver::ID,
+            self.len,
+            self.root_name,
+            self.amf
+        )
+    }
+}
+
 pub type Pair<T> = amf::Pair<String, T>;
 
-#[derive(Debug)]
 pub enum SolVariant {
-    Amf0(Sol<Amf0Value>),
-    Amf3(Sol<amf::Amf3Value>),
+    Amf0(Sol<Amf0>),
+    Amf3(Sol<Amf3>),
 }
 
 impl SolVariant {
@@ -58,18 +150,21 @@ pub fn read_from_file(path: &Path) -> Result<SolVariant, Box<dyn Error>> {
     cursor.read_exact(&mut root_name).unwrap();
     let root_name = std::str::from_utf8(&root_name).unwrap().to_owned();
     let mut blob = [0; 4];
+    assert_eq!(blob[0], 0);
+    assert_eq!(blob[1], 0);
+    assert_eq!(blob[2], 0);
     cursor.read_exact(&mut blob).unwrap();
     let amf_ver = match amf_ver_spec(blob) {
         Some(ver) => ver,
         None => panic!("Unknown AMF version"),
     };
     match amf_ver {
-        AmfVer::Amf0 => Ok(SolVariant::Amf0(Sol {
+        AmfVerSpec::Amf0 => Ok(SolVariant::Amf0(Sol {
             len,
             root_name,
             amf: read_amf0(cursor, len as u64)?,
         })),
-        AmfVer::Amf3 => Ok(SolVariant::Amf3(Sol {
+        AmfVerSpec::Amf3 => Ok(SolVariant::Amf3(Sol {
             len,
             root_name,
             amf: read_amf3(cursor, len as u64)?,
@@ -80,15 +175,16 @@ pub fn read_from_file(path: &Path) -> Result<SolVariant, Box<dyn Error>> {
 const BF_MAGIC: [u8; 2] = [0x00, 0xBF];
 const TCSO_MAGIC: [u8; 4] = *b"TCSO";
 const TAIL_MAGIC: [u8; 6] = [0x00, 0x04, 0x00, 0x00, 0x00, 0x00];
-enum AmfVer {
+
+enum AmfVerSpec {
     Amf0,
     Amf3,
 }
 
-fn amf_ver_spec(blob: [u8; 4]) -> Option<AmfVer> {
+fn amf_ver_spec(blob: [u8; 4]) -> Option<AmfVerSpec> {
     match blob[3] {
-        0 => Some(AmfVer::Amf0),
-        3 => Some(AmfVer::Amf3),
+        Amf0::ID => Some(AmfVerSpec::Amf0),
+        Amf3::ID => Some(AmfVerSpec::Amf3),
         _ => None,
     }
 }
