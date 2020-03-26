@@ -94,9 +94,9 @@ impl AmfWrite for Sol<Amf3> {
         for Pair { key, value } in &self.amf {
             encoder.encode_utf8(key)?;
             encoder.encode(value)?;
-            encoder.inner().write_u8(0).unwrap();
+            encoder.inner_mut().write_u8(0).unwrap();
         }
-        let end_pos = encoder.inner().seek(SeekFrom::Current(0))?;
+        let end_pos = encoder.inner_mut().seek(SeekFrom::Current(0))?;
         Ok((encoder.into_inner(), end_pos - 6))
     }
 }
@@ -240,7 +240,7 @@ fn read_amf3(
         }
         let key = decoder.decode_utf8().unwrap();
         let value = decoder.decode().unwrap();
-        let _padding = decoder.inner().read_u8().unwrap();
+        let _padding = decoder.inner_mut().read_u8().unwrap();
         kvpairs.push(Pair { key, value });
     }
 }
