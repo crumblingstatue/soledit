@@ -67,7 +67,7 @@ where
         w.write_all(&TCSO_MAGIC)?;
         w.write_all(&TAIL_MAGIC)?;
         w.write_u16::<BE>(self.root_name.len() as u16)?;
-        w.write_all(&self.root_name.as_bytes())?;
+        w.write_all(self.root_name.as_bytes())?;
         // Assume they are all zeroed, frick it.
         for _ in 0..3 {
             w.write_u8(0)?;

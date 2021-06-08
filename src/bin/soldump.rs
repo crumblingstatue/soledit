@@ -52,7 +52,7 @@ fn dump_amf3_value(value: &soledit::Amf3Value, indent_level: &mut u32, inline: b
             if let Some(name) = class_name {
                 print!("{} ", name);
             }
-            dump_amf3(&entries, indent_level, inline);
+            dump_amf3(entries, indent_level, inline);
         }
         Value::String(s) => printindent!(inline, *indent_level, "\"{}\"\n", s),
         Value::Boolean(b) => printindent!(inline, *indent_level, "{}\n", b),
@@ -66,7 +66,7 @@ fn dump_amf3_value(value: &soledit::Amf3Value, indent_level: &mut u32, inline: b
             *indent_level += 1;
             if !assoc_entries.is_empty() {
                 println!("ASSOC WAS NOT EMPTY WHOAH");
-                dump_amf3(&assoc_entries, indent_level, inline);
+                dump_amf3(assoc_entries, indent_level, inline);
             }
             for v in dense_entries {
                 dump_amf3_value(v, indent_level, false);
