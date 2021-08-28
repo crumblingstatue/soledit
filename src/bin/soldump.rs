@@ -20,8 +20,10 @@ macro_rules! printindent {
     }};
 }
 
-fn dump_amf0(_amf: &[soledit::Pair<soledit::Amf0Value>]) {
-    todo!()
+fn dump_amf0(amf: &[soledit::Pair<soledit::Amf0Value>]) {
+    for pair in amf {
+        println!("{} => {}", pair.key, pair.value);
+    }
 }
 
 fn dump_amf3(amf: &[soledit::Pair<soledit::Amf3Value>], indent_level: &mut u32, inline: bool) {

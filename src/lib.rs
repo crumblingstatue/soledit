@@ -1,5 +1,6 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use std::error::Error;
+use std::fmt::Display;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
@@ -16,6 +17,16 @@ pub enum Amf0Value {
     Num(f64),
     Bool(bool),
     String(String),
+}
+
+impl Display for Amf0Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Amf0Value::Num(n) => write!(f, "{}", n),
+            Amf0Value::Bool(b) => write!(f, "{}", b),
+            Amf0Value::String(s) => write!(f, "{}", s),
+        }
+    }
 }
 
 pub type Amf3Value = amf::Amf3Value;
