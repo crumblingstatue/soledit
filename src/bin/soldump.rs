@@ -1,13 +1,15 @@
 use std::env;
 
+use soledit::Amf0Obj;
+
 fn main() {
     let path = env::args_os().nth(1).expect("Need file path as argument");
     let sol = soledit::read_from_file(path.as_ref()).unwrap();
     let mut indent_level = 0;
     print!("{} ", sol.root_name());
     match sol {
-        soledit::SolVariant::Amf0(sol) => dump_amf0(&sol.amf),
-        soledit::SolVariant::Amf3(sol) => dump_amf3(&sol.amf, &mut indent_level, false),
+        soledit::SolVariant::Amf0(sol) => dump_amf0(&sol.root_object),
+        soledit::SolVariant::Amf3(sol) => dump_amf3(&sol.root_object, &mut indent_level, false),
     }
 }
 
@@ -21,9 +23,7 @@ macro_rules! printindent {
 }
 
 fn dump_amf0(amf: &[soledit::Pair<soledit::Amf0Value>]) {
-    for pair in amf {
-        println!("{} => {}", pair.key, pair.value);
-    }
+    println!("{}", amf.display());
 }
 
 fn dump_amf3(amf: &[soledit::Pair<soledit::Amf3Value>], indent_level: &mut u32, inline: bool) {

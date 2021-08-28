@@ -17,6 +17,7 @@ pub enum Amf0Value {
     Num(f64),
     Bool(bool),
     String(String),
+    Object(Object<Amf0>),
 }
 
 impl Display for Amf0Value {
@@ -25,7 +26,34 @@ impl Display for Amf0Value {
             Amf0Value::Num(n) => write!(f, "{}", n),
             Amf0Value::Bool(b) => write!(f, "{}", b),
             Amf0Value::String(s) => write!(f, "{}", s),
+            Amf0Value::Object(obj) => write!(f, "{}", obj.display()),
         }
+    }
+}
+
+impl<T: AsRef<[Pair<Amf0Value>]>> Amf0Obj for T {
+    fn as_pairs(&self) -> &[Pair<Amf0Value>] {
+        self.as_ref()
+    }
+}
+
+pub trait Amf0Obj {
+    fn as_pairs(&self) -> &[Pair<Amf0Value>];
+    fn display(&self) -> Amf0ObjDisplay {
+        Amf0ObjDisplay(self.as_pairs())
+    }
+}
+
+pub struct Amf0ObjDisplay<'a>(&'a [Pair<Amf0Value>]);
+
+impl<'a> Display for Amf0ObjDisplay<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{{")?;
+        for pair in self.0 {
+            writeln!(f, "\t{} => {}", pair.key, pair.value)?;
+        }
+        writeln!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -48,13 +76,15 @@ impl AmfVer for Amf3 {
     type Value = Amf3Value;
 }
 
+type Object<Ver> = Vec<Pair<<Ver as AmfVer>::Value>>;
+
 pub struct Sol<Ver: AmfVer> {
     pub len: u32,
     pub root_name: String,
     /// A list of key-value pairs. The values are all of the same AMF version.
-    /// There is no .sol file that has mixed AMF0 and AMF0.
+    /// There is no .sol file that has mixed AMF0 and AMF3.
     /// Instead, the AMF version is stated upfront in a special field in the .sol file.
-    pub amf: Vec<Pair<Ver::Value>>,
+    pub root_object: Object<Ver>,
 }
 
 impl<Ver: AmfVer> Sol<Ver> {
@@ -62,7 +92,7 @@ impl<Ver: AmfVer> Sol<Ver> {
         Self {
             len: 0,
             root_name,
-            amf,
+            root_object: amf,
         }
     }
 }
@@ -102,7 +132,7 @@ pub trait AmfWrite {
 impl AmfWrite for Sol<Amf3> {
     fn write_amf<W: Write + Seek>(&self, w: W) -> Result<(W, u64), Box<dyn Error>> {
         let mut encoder = amf::amf3::Encoder::new(w);
-        for Pair { key, value } in &self.amf {
+        for Pair { key, value } in &self.root_object {
             encoder.encode_utf8(key)?;
             encoder.encode(value)?;
             encoder.inner_mut().write_u8(0).unwrap();
@@ -123,7 +153,7 @@ where
             Ver::ID,
             self.len,
             self.root_name,
-            self.amf
+            self.root_object
         )
     }
 }
@@ -176,12 +206,12 @@ pub fn read_from_file(path: &Path) -> Result<SolVariant, Box<dyn Error>> {
         AmfVerSpec::Amf0 => Ok(SolVariant::Amf0(Sol {
             len,
             root_name,
-            amf: read_amf0(cursor, len as u64)?,
+            root_object: read_amf0(cursor, len as u64)?,
         })),
         AmfVerSpec::Amf3 => Ok(SolVariant::Amf3(Sol {
             len,
             root_name,
-            amf: read_amf3(cursor, len as u64)?,
+            root_object: read_amf3(cursor, len as u64)?,
         })),
     }
 }
@@ -212,31 +242,52 @@ fn read_amf0(
         if cursor.position() - 6 == len {
             return Ok(kvpairs);
         }
-        let key_len = cursor.read_u16::<BE>().unwrap();
-        let mut key = vec![0; key_len as usize];
-        cursor.read_exact(&mut key).unwrap();
-        let key = std::str::from_utf8(&key).unwrap().to_owned();
-        let type_ = cursor.read_u8().unwrap();
-        let value = match type_ {
-            0 => {
-                let num = cursor.read_f64::<BE>().unwrap();
-                Amf0Value::Num(num)
-            }
-            1 => {
-                let bool_marker = cursor.read_u8().unwrap();
-                Amf0Value::Bool(bool_marker != 0)
-            }
-            2 => {
-                let len = cursor.read_u16::<BE>().unwrap();
-                let mut buf = vec![0; len as usize];
-                cursor.read_exact(&mut buf).unwrap();
-                Amf0Value::String(std::str::from_utf8(&buf).unwrap().to_owned())
-            }
-            _ => panic!("Unexpected type: {:02X}", type_),
-        };
+        let (key, type_) = read_key_and_type(&mut cursor);
+        let value = read_value(type_, &mut cursor);
         kvpairs.push(Pair { key, value });
         let _padding = cursor.read_u8().unwrap();
     }
+}
+
+fn read_value(type_: u8, cursor: &mut std::io::Cursor<Vec<u8>>) -> Amf0Value {
+    let value = match type_ {
+        0 => {
+            let num = cursor.read_f64::<BE>().unwrap();
+            Amf0Value::Num(num)
+        }
+        1 => {
+            let bool_marker = cursor.read_u8().unwrap();
+            Amf0Value::Bool(bool_marker != 0)
+        }
+        2 => {
+            let len = cursor.read_u16::<BE>().unwrap();
+            let mut buf = vec![0; len as usize];
+            cursor.read_exact(&mut buf).unwrap();
+            Amf0Value::String(std::str::from_utf8(&buf).unwrap().to_owned())
+        }
+        3 => {
+            let mut kvpairs = Vec::new();
+            loop {
+                let (key, type_) = read_key_and_type(cursor);
+                if type_ == 9 {
+                    return Amf0Value::Object(kvpairs);
+                }
+                let value = read_value(type_, cursor);
+                kvpairs.push(Pair { key, value });
+            }
+        }
+        _ => panic!("Unexpected type: {:02X}", type_),
+    };
+    value
+}
+
+fn read_key_and_type(cursor: &mut std::io::Cursor<Vec<u8>>) -> (String, u8) {
+    let key_len = cursor.read_u16::<BE>().unwrap();
+    let mut key = vec![0; key_len as usize];
+    cursor.read_exact(&mut key).unwrap();
+    let key = std::str::from_utf8(&key).unwrap().to_owned();
+    let type_ = cursor.read_u8().unwrap();
+    (key, type_)
 }
 
 fn read_amf3(
