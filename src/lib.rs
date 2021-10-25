@@ -179,9 +179,7 @@ pub fn read_from_file(path: &Path) -> Result<SolVariant, Box<dyn Error>> {
     let mut cursor = std::io::Cursor::new(data);
     let mut magic = [0; 2];
     cursor.read_exact(&mut magic).unwrap();
-    if magic != BF_MAGIC {
-        panic!("Unsupported format: {:X?}", magic);
-    }
+    assert!(magic == BF_MAGIC, "Unsupported format: {:X?}", magic);
     let len = cursor.read_u32::<BE>().unwrap();
     let mut type_ = [0; 4];
     cursor.read_exact(&mut type_).unwrap();
