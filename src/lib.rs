@@ -1,7 +1,7 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use std::error::Error;
 use std::fmt::Display;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 /// AMF version used by the Sol.
@@ -18,6 +18,21 @@ pub enum Amf0Value {
     Bool(bool),
     String(String),
     Object(Object<Amf0>),
+}
+
+impl Amf0Value {
+    const NUM: u8 = 0;
+    const BOOL: u8 = 1;
+    const STRING: u8 = 2;
+    const OBJECT: u8 = 3;
+    pub fn type_(&self) -> u8 {
+        match self {
+            Self::Num(_) => Self::NUM,
+            Self::Bool(_) => Self::BOOL,
+            Self::String(_) => Self::STRING,
+            Self::Object(_) => Self::OBJECT,
+        }
+    }
 }
 
 impl Display for Amf0Value {
@@ -137,9 +152,69 @@ impl AmfWrite for Sol<Amf3> {
             encoder.encode(value)?;
             encoder.inner_mut().write_u8(0).unwrap();
         }
-        let end_pos = encoder.inner_mut().seek(SeekFrom::Current(0))?;
+        let end_pos = encoder.inner_mut().stream_position()?;
         Ok((encoder.into_inner(), end_pos - 6))
     }
+}
+
+impl AmfWrite for Sol<Amf0> {
+    fn write_amf<W: Write + Seek>(&self, mut w: W) -> Result<(W, u64), Box<dyn Error>> {
+        for pair in &self.root_object {
+            write_key_and_type(pair, &mut w)?;
+            write_value(&pair.value, &mut w)?;
+            w.write_u8(0)?;
+        }
+        let end_pos = w.stream_position()?;
+        Ok((w, end_pos - 6))
+    }
+}
+
+fn write_key_and_type(pair: &Pair<Amf0Value>, w: &mut impl Write) -> io::Result<()> {
+    w.write_u16::<BE>(pair.key.len() as u16)?;
+    w.write_all(pair.key.as_bytes())?;
+    w.write_u8(pair.value.type_())
+}
+
+fn write_value(value: &Amf0Value, w: &mut impl Write) -> io::Result<()> {
+    match value {
+        Amf0Value::Num(n) => w.write_f64::<BE>(*n)?,
+        Amf0Value::Bool(b) => w.write_u8(if *b { 1 } else { 0 })?,
+        Amf0Value::String(s) => {
+            w.write_u16::<BE>(s.len() as u16)?;
+            w.write_all(s.as_bytes())?;
+        }
+        Amf0Value::Object(_o) => todo!(),
+    }
+    Ok(())
+    /*let value = match type_ {
+        0 => {
+            let num = cursor.read_f64::<BE>().unwrap();
+            Amf0Value::Num(num)
+        }
+        1 => {
+            let bool_marker = cursor.read_u8().unwrap();
+            Amf0Value::Bool(bool_marker != 0)
+        }
+        2 => {
+            let len = cursor.read_u16::<BE>().unwrap();
+            let mut buf = vec![0; len as usize];
+            cursor.read_exact(&mut buf).unwrap();
+            Amf0Value::String(std::str::from_utf8(&buf).unwrap().to_owned())
+        }
+        3 => {
+            let mut kvpairs = Vec::new();
+            loop {
+                let (key, type_) = read_key_and_type(cursor);
+                if type_ == 9 {
+                    return Amf0Value::Object(kvpairs);
+                }
+                let value = read_value(type_, cursor);
+                kvpairs.push(Pair { key, value });
+            }
+        }
+        _ => panic!("Unexpected type: {:02X}", type_),
+    };
+    value*/
 }
 
 impl<Ver: AmfVer> std::fmt::Debug for Sol<Ver>
@@ -170,6 +245,12 @@ impl SolVariant {
         match self {
             Self::Amf0(sol) => &sol.root_name,
             Self::Amf3(sol) => &sol.root_name,
+        }
+    }
+    pub fn write_to_file(&self, path: &Path) -> Result<(), Box<dyn Error>> {
+        match self {
+            Self::Amf0(sol) => sol.write_to_file(path),
+            Self::Amf3(sol) => sol.write_to_file(path),
         }
     }
 }
@@ -249,21 +330,21 @@ fn read_amf0(
 
 fn read_value(type_: u8, cursor: &mut std::io::Cursor<Vec<u8>>) -> Amf0Value {
     let value = match type_ {
-        0 => {
+        Amf0Value::NUM => {
             let num = cursor.read_f64::<BE>().unwrap();
             Amf0Value::Num(num)
         }
-        1 => {
+        Amf0Value::BOOL => {
             let bool_marker = cursor.read_u8().unwrap();
             Amf0Value::Bool(bool_marker != 0)
         }
-        2 => {
+        Amf0Value::STRING => {
             let len = cursor.read_u16::<BE>().unwrap();
             let mut buf = vec![0; len as usize];
             cursor.read_exact(&mut buf).unwrap();
             Amf0Value::String(std::str::from_utf8(&buf).unwrap().to_owned())
         }
-        3 => {
+        Amf0Value::OBJECT => {
             let mut kvpairs = Vec::new();
             loop {
                 let (key, type_) = read_key_and_type(cursor);
