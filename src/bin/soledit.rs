@@ -1,5 +1,6 @@
 use std::env;
 
+use amf::Amf3Value;
 use egui::{DragValue, ScrollArea, TextEdit};
 use sfml::{
     graphics::{Color, RenderTarget, RenderWindow},
@@ -28,7 +29,9 @@ fn main() {
                     soledit::SolVariant::Amf0(sol) => {
                         ui_amf0(ui, &mut sol.root_object, &filter_string)
                     }
-                    soledit::SolVariant::Amf3(sol) => ui_amf3(ui, &mut sol.root_object),
+                    soledit::SolVariant::Amf3(sol) => {
+                        ui_amf3(ui, &mut sol.root_object, &filter_string)
+                    }
                 }
             });
         });
@@ -39,10 +42,51 @@ fn main() {
     sol.write_to_file(path.as_ref()).unwrap();
 }
 
-fn ui_amf3(ui: &mut egui::Ui, root_object: &mut [soledit::Pair<soledit::Amf3Value>]) {
-    for pair in root_object {
-        ui.label(&pair.key);
-    }
+fn ui_amf3(
+    ui: &mut egui::Ui,
+    root_object: &mut [soledit::Pair<soledit::Amf3Value>],
+    filter_string: &str,
+) {
+    ScrollArea::vertical().show(ui, |ui| {
+        for pair in root_object {
+            if !pair.key.contains(filter_string) {
+                continue;
+            }
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(&mut pair.key);
+                match &mut pair.value {
+                    Amf3Value::Undefined => todo!(),
+                    Amf3Value::Null => ui.label("null"),
+                    Amf3Value::Boolean(b) => ui.checkbox(b, ""),
+                    Amf3Value::Integer(n) => ui.add(DragValue::new(n)),
+                    Amf3Value::Double(n) => ui.add(DragValue::new(n)),
+                    Amf3Value::String(s) => ui.text_edit_singleline(s),
+                    Amf3Value::XmlDocument(_) => todo!(),
+                    Amf3Value::Date { unix_time } => ui.label("<date>"),
+                    Amf3Value::Array {
+                        assoc_entries,
+                        dense_entries,
+                    } => ui.label("<array>"),
+                    Amf3Value::Object {
+                        class_name,
+                        sealed_count,
+                        entries,
+                    } => ui.label("<object>"),
+                    Amf3Value::Xml(_) => todo!(),
+                    Amf3Value::ByteArray(_) => todo!(),
+                    Amf3Value::IntVector { is_fixed, entries } => todo!(),
+                    Amf3Value::UintVector { is_fixed, entries } => todo!(),
+                    Amf3Value::DoubleVector { is_fixed, entries } => todo!(),
+                    Amf3Value::ObjectVector {
+                        class_name,
+                        is_fixed,
+                        entries,
+                    } => todo!(),
+                    Amf3Value::Dictionary { is_weak, entries } => todo!(),
+                }
+            });
+        }
+    });
 }
 
 fn ui_amf0(
